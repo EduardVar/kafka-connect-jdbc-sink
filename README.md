@@ -1,223 +1,197 @@
-# Kafka Connect sink connector for JDBC
+# Db2 Scarf&trade;
 
-kafka-connect-jdbc-sink is a [Kafka Connect](http://kafka.apache.org/documentation.html#connect) sink connector for copying data from Apache Kafka into a JDBC database.
+`Last Updated February 13, 2024`
 
-The connector is supplied as source code which you can easily build into a JAR file.
+This documentation gives the steps to setup, connect to, and utilize Kafka Sink Connector with JDBC connectors.
 
-## Installation
+## Before You Begin
 
-1. Clone the repository with the following command:
+### Installation
+1. Clone the [kafka-connect-jdbc-sink](https://github.com/ibm-messaging/kafka-connect-jdbc-sink/tree/main) repository with the following command:
+    ```
+    git clone git@github.com:ibm-messaging/kafka-connect-jdbc-sink.git
+    ```
+    > Note: if you don't have access to this repository, fork it and then clone it.
+2. Make sure [Apache Kafka installed](https://kafka.apache.org/downloads) is installed. (Ex: Version 3.6.0) Make note of the port you will be using (default: `9092`). Save the location of the Kafka installation to an environment variable:
+    ```
+    KAFKA_BROKER_PORT=9092
+    KAFKA_INSTALL_DIR=<PATH-TO-KAFKA-INSTALLATION>
+    ``` 
+3. [Zookeper](https://kafka.apache.org/quickstart#quickstart_startserver) comes with the Kafka installation. Make note of the port you will be using (default: `2181`).
 
-```bash
-git@github.com:ibm-messaging/kafka-connect-jdbc-sink.git
-```
+> **NOTE**: It's assumed you have a Db2 installation that's TCP IP enabled.
 
-2. Change directory to the `kafka-connect-jdbc-sink` directory:
-
-```shell
-cd kafka-connect-jdbc-sink
-```
-
-3. Build the connector using Maven:
-
-```bash
-mvn clean package
-```
-
-
-4. Setup a local zookeeper service running on port 2181 (default) 
-
-5. Setup a local kafka service running on port 9092 (default)
-
-6. Setup a local rabbitmq service running on port 15672 (default)
-
-7. Copy the compiled jar file into the `/usr/local/share/java/` directory:
-
-```bash
-cp target/kafka-connect-jdbc-sink-1.0.0-SNAPSHOT-jar-with-dependencies.jar /usr/local/share/java/
-```
-
-8. Copy the `connect-standalone.properties` and `jdbc-sink.properties` files into the `/usr/local/etc/kafka/` directory.
-
-```bash
-cp config/* /usr/local/etc/kafka/
-```
-
-9. Go to the kafka installation directory `/usr/local/etc/kafka/`:
-
-```bash
-cd /usr/local/etc/kafka/
-```
-
-10. Set the CLASSPATH value to `/usr/local/share/java/` as follows:
-
-```bash
-export CLASSPATH=/usr/local/share/java/
-```
+### Setup
+1. Enter the cloned repository.
+    ```
+    cd kafka-connect-jdbc-sink
+    ```
+2. Create a directory to store `.jar` files that will be used with the built kafka connector. Ex:
+    ```
+    mkdir kafka_jar_files   # Just an exmaple
+    KAFKA_JAR_FILES=$(cd kafka_jar_files; pwd; cd ..)   # This saves the absolute path of your created folder
+    ```
+3. Build the connector using [maven](https://maven.apache.org/):
+    ```
+    mvn clean package
+    ```
+    This generates a `.jar` file in the `target/` directory of the cloned repository, which now you can put in the `KAFKA_JAR_FILES` path.
+    ```
+    cp target/kafka-connect-jdbc-sink-1.0.0-SNAPSHOT-jar-with-dependencies.jar $KAFKA_JAR_FILES/
+    ```
+4. Download the [dc2jcc.jar](https://www.ibm.com/support/pages/db2-jdbc-driver-versions-and-downloads) and move it into your `KAFKA_JAR_FILES` directory.
+5. Copy the entire `config` directory from the repository to your `KAFKA_INSTALL_DIR`:
+    ```
+    cp -r config $KAFKA_INSTALL_DIR/
+    ```
+5. Make sure your environment variables are updated to be pointing to `KAFKA_JAR_FILES`. Ex:
+    ```
+    export CLASSPATH="$CLASSPATH:$KAFKA_JAR_FILES"
+    ```
 
 ## Configuration
 
-1. Create a target kafka topic named `kafka_test`:
+1. In your Kafka installation (`KAFKA_INSTALL_DIR`), set up a topic. Below is an example of paramters used for configuring Kafka to your Db2 database.
+    ```
+    TOPIC_NAME="kafka_test"
+    PARTITIONS=3
+    REPLICATION=1
+    ZOOKEEPER_PORT=2181
+    ```
+    Now, plug everything in to create a Kafka topic:
+    ```
+    kafka-topics --create --topic $TOPIC_NAME --partitions $PARTITIONS --replication-factor $REPLICATION --zookeeper 127.0.0.1:$ZOOKEEPER_PORT
+    ```
+2. In your `KAFKA_INSTALL_DIR`, in the `config` folder, you'll need to create a file called `jdbc-sink.properties`:
+    ```
+    cd $KAFKA_INSTALL_DIR
+    vi config/jdbc-sink.properties
+    ```
+3. You will need to fill `jdbc-sink.properties` out with the information in the values surrounded by `< >` with the values of your ***JDBC database***. Template:
+    ```
+    # A simple example that copies from a topic to a JDBC database.
+    # The first few settings are required for all connectors:
+    # a name, the connector class to run, and the maximum number of tasks to create:
+    name=<CONNECTOR-NAME>               # Example: jdbc-sink-connector
+    connector.class=<CLASS-PATH>        # Example: com.ibm.eventstreams.connect.jdbcsink.JDBCSinkConnector
+    tasks.max=<TASKS_MAX>               # Example: 1    (Change as needed)
 
-```shell
-kafka-topics --create --topic kafka_test --partitions 3 --replication-factor 1 --zookeeper 127.0.0.1:2181
+    # Below is the db2 driver (used instead of postgres)
+    driver.class=com.ibm.db2.jcc.DB2Driver
+
+    # The topics to consume from - required for sink connectors
+    topics=<TOPIC-NAME>    # Example: kafka_test from $TOPIC_NAME
+
+    # Configuration specific to the JDBC sink connector.
+    # We want to connect to a SQLite database stored
+    # in the file test.db and auto-create tables.
+    connection.url=<CONNECTION_URL_OF_YOUR_DATABASE>    # Example: jdbc:db2://localhost:60006/BLUDB
+    connection.user=<CONNECTION_USER>
+    connection.password=<CONNECTION_PASSWORD>
+    connection.ds.pool.size=<POOL_SIZE>                 # Example: 5    (Update as needed)
+    connection.table=<TABLE_NAME>
+    insert.mode.databaselevel=true
+    insert.function.value=memory_table
+    put.mode=insert
+    table.name.format=<[shema].[table]>                 # Example: EDU.TAB1
+    auto.create=true
+
+    # Define when identifiers should be quoted in DDL and DML statements.
+    # The default is 'always' to maintain backward compatibility with prior versions.
+    # Set this to 'never' to avoid quoting fully-qualified or simple table and column names.
+    #quote.sql.identifiers=always
+    ```
+Now you're set to run the Db2 Scarf&trade; connector in Standalone or Distributed Mode.
+
+## Running your Db2 Scarf&trade; Connector
+### ‼️ Before Running your Connector ‼️
+Before running your connector, you need to start the Kafka Zookeeper and Kafka Broker:
 ```
-
-2. Set up a JDBC database with an accessible URL and Port Number as well as a user with read/write privileges.
-
-Setting up this database involves creating the database, creating user with password and proper access privileges.
-
-Below are some of the commands involved in setting up databases using postgresql:
-
-```bash
-create user {username};
-create database {dbname};
-grant all privileges on database {dbname} to {username};
-
-\l - list databse
-\du is to verify user roles
-\c to select database
+cd $KAFKA_INSTALL_DIR
+bin/zookeeper-server-start.sh config/zookeeper.properties
+bin/kafka-server-start.sh config/server.properties
 ```
+> Please make sure both the kafka and zookeper servers are running before starting ingesting.
 
-Below are some of the commands involved in setting up databases using db2 using a docker image:
+### Running in Standalone Mode
+1. Navigate to your `KAFKA_INSTALL_DIR`,
+    ```
+    cd $KAFKA_INSTALL_DIR
+    ```
+2. Edit your `config/connect-standalone.properties` file and set these two settings to `true`:
+    ```
+    key.converter.schemas.enable=true
+    value.converter.schemas.enable=true
+    ```
+    Additionally in the file, make sure `plugin.path` is set to the the location of `KAFKA_JAR_FILES`:
+    ```
+    plugin.path=<PATH-OF-KAFKA_JAR_FILES>
+    ```
+3. Finally run the below command:
+    ```
+    bin/connect-standalone.sh config/connect-standalone.properties config/jdbc-sink.properties
+    ```
+Next, go the [Validation](##Validation) section or use your own producer to begin ingesting data!
 
-```bash
-1. docker network create DB2net
-2. mkdir db2
-3. cd db2
-4. docker run -it -d --name mydb2 --privileged=true -p 50000:50000 -e LICENSE=accept -e DB2INST1_PASSWORD=<Access Password> -e DBNAME=db2 -v "$PWD":/database --network DB2net ibmcom/db2
-5. docker logs -f mydb2
-	# make sure all 4 tasks are completed and
-	# (*) All databases are now active
-6. docker exec -it mydb2 bash -c "su - db2inst1"
-7. db2
-8. create db kafka_test
-9. connect to kafka_test
-10. list tables
-11. select * from company
+### Running in Distributed Mode
+In order to run the connector in distributed mode you must first register the connector with [Kafka Connect](https://docs.confluent.io/platform/current/connect/index.html#what-is-kafka-connect) service by creating a JSON file in `KAFKA_INSTALL_DIR/config/jdbc-connector.json` with the format below:
 ```
-
-Download the dc2jcc.jar file from the following url: https://www.ibm.com/support/pages/db2-jdbc-driver-versions-and-downloads and place it into the jar classpath `/usr/local/share/java/`.
-
-
-3. Open up the `config\jdbc-connector.json` file using the command below:
-
-```bash
-vi config\jdbc-connector.json
-```
-
-4. Set the following values in the `config\jdbc-connector.json` file:
-
-```bash
-    "connection.url": <CONNECTION_URL_OF_YOUR_DATABASE>,   (ie: "jdbc:postgresql://127.0.0.1:5432/postgres")
-    "connection.user": <CONNECTION_USER>,                  (ie: "newuser")
-    "connection.password": <CONNECTION_PASSWORD>,          (ie: "test")
-    "table.name.format": <DATABASE_TABLE_NAME>             (ie: "company")
-```
-
-## Running in Standalone Mode
-
-Run the following command to start the sink connector service in standalone mode:
-
-```bash
-connect-standalone connect-standalone.properties jdbc-sink.properties
-```
-
-## Running in Distributed Mode
-
-1. In order to run the connector in distributed mode you must first register the connector with
-Kafka Connect service by creating a JSON file in the format below:
-
-```json
 {
-  "name": "jdbc-sink-connector",
+  "name": "<CONNECTOR-NAME>",
   "config": {
-    "connector.class": "com.ibm.eventstreams.connect.jdbcsink.JDBCSinkConnector",
-    "tasks.max": "1",
-    "topics": "kafka_test",
-    "connection.url": "jdbc:postgresql://127.0.0.1:5432/postgres",
-    "connection.user": "newuser",
-    "connection.password": "test",
-    "connection.ds.pool.size": 5,
+    "connector.class": "<CLASS-PATH>",
+    "tasks.max": "<TASKS_MAX>",
+    "topics": "<TOPIC-NAME>",
+    "connection.url": "<CONNECTION_URL_OF_YOUR_DATABASE>",
+    "connection.user": "<CONNECTION_USER>",
+    "connection.password": "<CONNECTION_PASSWORD>",
+    "connection.ds.pool.size": <POOL_SIZE>,
     "insert.mode.databaselevel": true,
-    "table.name.format": "company"
+    "table.name.format": "<[shema].[table]>"
   }
 }
 ```
-
-A version of this file, `config/jdbc-connector.json`, is located in the `config` directory.  To register
-the connector do the following:
-
-1. Run the following command to the start the source connector service in distributed mode:
-
-```bash
-connect-distributed connect-distributed.properties
+Once you fill in the `jdbc-connector.json` file, navigate back to your `KAFKA_INSTALL_DIR` and register the connector.
 ```
-
-2. Run the following command to register the connector with the Kafka Connect service:
-
-```bash
+cd $KAFKA_INSTALL_DIR
+connect-distributed connect-distributed.properties
 curl -s -X POST -H 'Content-Type: application/json' --data @config/jdbc-connector.json http://localhost:8083/connectors
 ```
-
-You can verify that your connector was properly registered by going to `http://localhost:8083/connectors` which 
-should return a full list of available connectors.  This JSON connector profile will be propegated to all workers
-across the distributed system.  After following these steps your connector will now run in distributed mode.
-
-## Testing
-
-1. Run a kafka producer using the following value.schema by entering the following command:
-
-```shell
-kafka-console-producer --broker-list localhost:9092 --topic kafka_test
-```
-
-The console producer will now wait for the output.
-
-2. Copy the following record into the producer terminal:
-
-```shell
-{"schema": {"type": "struct","fields": [{"type": "string","optional": false,"field": "Name"}, {"type": "string","optional": false,"field": "company"}],"optional": false,"name": "Person"},"payload": {"Name": "Roy Jones","company": "General Motors"}}
-```
-
-3. Open up the command-line client of your JDBC database and verify that a record has been added into the target database table.
-If the database table did not exist prior to this, it would have been created by this process.
-
-Be sure to target the proper database by using `\c <database_name>` or `USE <database_name>;`.
-
-```sql
-select * from company;
-```
-
-4. You should be able to see your newly created record added to this database table as follows:
-
-```
- id |   timestamp   |   name    |    company     
-----+------+---------------+-----------+----------------
-  1 | 1587969949600 | Roy Jones |  General Motors
-```
-
-## Support
-
-Commercial support for this connector is available for customers with a support entitlement for [IBM Event Automation](https://www.ibm.com/products/event-automation) or [IBM Cloud Pak for Integration](https://www.ibm.com/cloud/cloud-pak-for-integration).
-
-## Issues and contributions
-
-For issues relating specifically to this connector, please use the [GitHub issue tracker](https://github.com/ibm-messaging/kafka-connect-jdbc-sink/issues). If you do want to submit a Pull Request related to this connector, please read the [contributing guide](CONTRIBUTING.md) first to understand how to sign your commits.
+You can verify that your connector was properly registered by going to http://localhost:8083/connectors which should return a full list of available connectors. This JSON connector profile will be propegated to all workers across the distributed system. After following these steps your connector will now run in distributed mode.
 
 
-## License
+## Validation
+This section will be to test that your configured Kafka connector can injest data.
 
-Copyright 2020, 2023 IBM Corporation
+1. Start a kafka producer:
+    ```
+    kafka-console-producer --broker-list localhost:$KAFKA_BROKER_PORT --topic $TOPIC_NAME
+    ```
+2. Create a schema JSON record and enter it into the producer terminal from step 1. Example record:
+    ```
+    {"schema": {"type": "struct","fields": [{"type": "string","optional": false,"field": "Name"}, {"type": "string","optional": false,"field": "company"}],"optional": false,"name": "Person"},"payload": {"Name": "Roy Jones","company": "General Motors"}}
+    ```
+    > Pasting this record with no table in the ***JDBC database*** creates a new `table` with the `schema`. This JSON record assumes a table has four columns, so if you already have an existing `table` make sure the table with that `schema` has four columns. 
+3. Open up the command-line client of your ***JDBC database*** and verify that a record has been added into the target database table. If the database table did not exist prior to this, it would have been created by this process.
+    > Be sure to target the proper database by using `\c <database_name>` or `USE <database_name>;`.
+4. You should be able to see your newly created record added to your ***JDBC database*** table. 
+    
+    Example from schema in step 2, selecting from it gives:
+    ```
+    select * from company;
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+     id |   timestamp   |   name    |    company     
+     ----+------+---------------+-----------+----------------
+     1 | 1587969949600 | Roy Jones |  General Motors
+    ```
 
-    (http://www.apache.org/licenses/LICENSE-2.0)
+### Using the Dashboard
+[LOREM IPSUM]
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.The project is licensed under the Apache 2 license.
+## Differences between older repo/new repo
+- Contains the functionality for the `MEMORY_TABLE` mode described in the documentation
+- TODO: Future performance testing for Distributed mode (currently we're only testing standalone mode)
+
+## Extra Links / Related Topics
+- [kafka-connect-jdbc-sink Repository with ReadMe](https://github.com/ibm-messaging/kafka-connect-jdbc-sink/tree/main)
+- Limitations: Needs to be restarted every single record set ingest.
