@@ -20,6 +20,7 @@ package com.ibm.eventstreams.connect.jdbcsink.database.utils;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -70,6 +71,14 @@ public class DataSourceFactor {
 
     public boolean doesTableExist(String tableName) throws SQLException {
         String[] tableParts = tableName.split("\\.");
+
+        // PROBLEM: Sink operator closes db connection after every batch insertion.
+        // TEMPORARY FIX: If db connection is closed, then we then we re-create the connection (So that a continuous stream of batches could be inserted without halting).
+        if (connection.isClosed()){
+            // REPLACE the three parameters in getConnection() with your db connection details.
+            connection = DriverManager.getConnection("connection.url", "connection.user", "connection.password");
+        }
+
         DatabaseMetaData dbm = connection.getMetaData();
         ResultSet table = dbm.getTables(null, tableParts[0], tableParts[1], null);
         return table.next();
