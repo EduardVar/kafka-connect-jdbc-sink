@@ -103,6 +103,10 @@ This documentation gives the steps to setup, connect to, and utilize Kafka Sink 
     ```
 Now you're set to run the Db2 Scarf&trade; connector in Standalone or Distributed Mode.
 
+> **NOTE**: if you are unable to run the connector in the following steps, you may need to hardcode values in:
+> [DataSourceFactor.java#70](https://github.com/EduardVar/kafka-connect-jdbc-sink/blob/main/src/main/java/com/ibm/eventstreams/connect/jdbcsink/database/utils/DataSourceFactor.java#L79).
+> You will have to update the values of `"connection.url"`, `"connection.user"`, and `"connection.password"` with the values from the step above entered in `jdbc-sink.properties`.
+
 ## Running your Db2 Scarf&trade; Connector
 ### ‼️ Before Running your Connector ‼️
 Before running your connector, you need to start the Kafka Zookeeper and Kafka Broker:
