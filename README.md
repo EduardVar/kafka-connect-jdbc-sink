@@ -189,8 +189,12 @@ This section will be to test that your configured Kafka connector can injest dat
      1 | 1587969949600 | Roy Jones |  General Motors
     ```
 
-### Using the Dashboard
-[LOREM IPSUM]
+### Setting up the Dashboard (Optional)
+https://github.ibm.com/dustin-ward/scarf-resources/blob/master/README.md
+
+#### Demo Bringing Everything Together
+https://github.com/EduardVar/kafka-connect-jdbc-sink/assets/47066749/996f1e1f-0d68-4534-9f0c-47ff6dbc16ea
+
 
 ## Differences between older repo/new repo
 - Contains the functionality for the `MEMORY_TABLE` mode described in the documentation
